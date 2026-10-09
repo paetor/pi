@@ -223,7 +223,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// If session has data, try to restore model from it
 	if (!model && hasExistingSession && sessionModel) {
 		const restoredModel = modelRuntime.getModel(sessionModel.provider, sessionModel.modelId);
-		if (restoredModel && modelRuntime.hasConfiguredAuth(restoredModel.provider)) {
+		if (
+			restoredModel &&
+			(modelRuntime.hasConfiguredAuth(restoredModel.provider) ||
+				modelRuntime.getCredentialStore(restoredModel.provider))
+		) {
 			model = restoredModel;
 		}
 		if (!model) {

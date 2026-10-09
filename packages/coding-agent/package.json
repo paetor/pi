@@ -16,6 +16,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./cli-host": {
+			"types": "./dist/cli-host.d.ts",
+			"import": "./dist/cli-host.js"
+		},
 		"./rpc-entry": {
 			"import": "./dist/bundle/rpc-entry.js"
 		},

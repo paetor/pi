@@ -43,7 +43,7 @@ import {
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
-import type { InlineExtension } from "./core/extensions/types.ts";
+import type { InlineExtension, SessionStartEvent } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
 import { resolveCliModel, resolveModelScope, type ScopedModel } from "./core/model-resolver.ts";
 import { ModelRuntime } from "./core/model-runtime.ts";
@@ -568,6 +568,15 @@ async function promptForMissingSessionCwd(
 
 export interface MainOptions {
 	extensionFactories?: InlineExtension[];
+	/** Trusted host callback, before model resolution on every session replacement.
+	 * This is credential setup, independent of extension discovery and tool grants.
+	 */
+	prepareSessionCredentials?: (context: {
+		modelRuntime: ModelRuntime;
+		sessionManager: SessionManager;
+		sessionStartEvent?: SessionStartEvent;
+		explicitApiKey: boolean;
+	}) => Promise<void>;
 }
 
 export async function main(args: string[], options?: MainOptions) {
@@ -806,6 +815,13 @@ export async function main(args: string[], options?: MainOptions) {
 				message: `Extension package "${path}": ${warning}`,
 			})),
 		];
+
+		await options?.prepareSessionCredentials?.({
+			modelRuntime,
+			sessionManager,
+			sessionStartEvent,
+			explicitApiKey: !!parsed.apiKey,
+		});
 
 		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
 		const scopedModels =

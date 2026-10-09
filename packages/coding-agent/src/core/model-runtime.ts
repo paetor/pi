@@ -130,7 +130,12 @@ export interface ModelRuntimeAuthOverrides extends AuthOperationOptions {
 	minOAuthValidityMs?: number;
 }
 
-export type CredentialSynchronizationOperation = "login" | "logout" | "setRuntimeApiKey" | "removeRuntimeApiKey";
+export type CredentialSynchronizationOperation =
+	| "login"
+	| "logout"
+	| "setRuntimeApiKey"
+	| "removeRuntimeApiKey"
+	| "setCredentialStore";
 
 /** Credentials changed successfully, but the local model/auth snapshot could not be synchronized. */
 export class CredentialSynchronizationError extends Error {
@@ -524,6 +529,14 @@ export class ModelRuntime implements Models {
 		return this.nativeExtensionProviders.get(providerId);
 	}
 
+	getCredentialStoreProviders(): readonly string[] {
+		return this.credentials.getCredentialStoreProviders();
+	}
+
+	getCredentialStore(providerId: string): CredentialStore | undefined {
+		return this.credentials.getCredentialStore(providerId);
+	}
+
 	/** @internal Compatibility fallback for ModelRegistry when provider auth is unconfigured. */
 	getCompatibilityRequestConfig(model: Model<Api>): CompatibilityRequestConfig {
 		return resolveCompatibilityRequestConfig(
@@ -551,8 +564,10 @@ export class ModelRuntime implements Models {
 		providerOrModel: string | AnyModel,
 		overrides: ModelRuntimeAuthOverrides = {},
 	): Promise<AuthResult | undefined> {
-		if (typeof providerOrModel === "string") return this.models.getAuth(providerOrModel, overrides);
-		const resolution = await this.models.getAuth(providerOrModel, overrides);
+		if (typeof providerOrModel === "string") {
+			return this.credentials.withScope(() => this.models.getAuth(providerOrModel, overrides));
+		}
+		const resolution = await this.credentials.withScope(() => this.models.getAuth(providerOrModel, overrides));
 		if (!resolution) return undefined;
 		const configuredHeaders = resolveConfiguredModelHeaders(
 			providerOrModel,
@@ -609,6 +624,33 @@ export class ModelRuntime implements Models {
 		} catch (cause) {
 			throw new CredentialSynchronizationError(providerId, operation, credential, { cause });
 		}
+	}
+
+	/**
+	 * Route one provider to an app-owned store without changing persistent default auth.
+	 * Call at a session's idle boundary. In-flight auth operations retain their captured store.
+	 * Removal is explicit: extension reload/unload must not silently revert a managed account.
+	 */
+	setCredentialStore(
+		providerId: string,
+		store: CredentialStore | undefined,
+		options: AuthOperationOptions & { retainOnFailure?: boolean } = {},
+	): Promise<void> {
+		if (!this.models.getProvider(providerId)) return Promise.reject(new Error("Unknown credential-store provider."));
+		const signal = operationSignal(options.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			const previous = this.credentials.setCredentialStore(providerId, store);
+			try {
+				await this.synchronizeCredentialState(providerId, "setCredentialStore", undefined, signal);
+			} catch (error) {
+				// Restoring a persisted account must fail closed, not resume another account.
+				if (!options.retainOnFailure) {
+					this.credentials.setCredentialStore(providerId, previous);
+					await this.refreshProviderAvailability(providerId, operationSignal()).catch(() => {});
+				}
+				throw error;
+			}
+		});
 	}
 
 	setRuntimeApiKey(providerId: string, apiKey: string, options: AuthOperationOptions = {}): Promise<void> {
@@ -824,7 +866,10 @@ export class ModelRuntime implements Models {
 	): Promise<Credential> {
 		const signal = operationSignal(interaction.signal);
 		return this.enqueueCredentialOperation(providerId, signal, async () => {
-			const credential = await this.models.login(providerId, type, { ...interaction, signal }, options);
+			const credential = await this.credentials.withScope(() => {
+				this.credentials.beforeLogin(providerId);
+				return this.models.login(providerId, type, { ...interaction, signal }, options);
+			});
 			await this.synchronizeCredentialState(providerId, "login", credential, signal);
 			return credential;
 		});
@@ -833,7 +878,7 @@ export class ModelRuntime implements Models {
 	logout(providerId: string, options: AuthOperationOptions = {}): Promise<void> {
 		const signal = operationSignal(options.signal);
 		return this.enqueueCredentialOperation(providerId, signal, async () => {
-			await this.models.logout(providerId, { signal });
+			await this.credentials.withScope(() => this.models.logout(providerId, { signal }));
 			await this.synchronizeCredentialState(providerId, "logout", undefined, signal);
 		});
 	}
@@ -853,7 +898,9 @@ export class ModelRuntime implements Models {
 		};
 		// Published pi-ai builds before ModelsStore returned void and accepted a provider ID.
 		// The fallback keeps source-mode CLI tests working without rebuilding workspace dependencies.
-		const result = ((await this.models.refresh(refreshOptions)) as ModelsRefreshResult | undefined) ?? {
+		const result = ((await this.credentials.withScope(() => this.models.refresh(refreshOptions))) as
+			| ModelsRefreshResult
+			| undefined) ?? {
 			aborted: refreshOptions.signal?.aborted ?? false,
 			errors: new Map(),
 		};

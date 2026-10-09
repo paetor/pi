@@ -816,6 +816,7 @@ describe("default model selection", () => {
 					? savedDeepSeekModel
 					: undefined,
 			hasConfiguredAuth: (provider: string) => provider === "spark-two",
+			getCredentialStore: () => undefined,
 			getAvailableSnapshot: () => [localDeepSeekModel],
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 
@@ -829,6 +830,25 @@ describe("default model selection", () => {
 
 		expect(result.model?.provider).toBe("spark-two");
 		expect(result.model?.id).toBe("deepseek-v4-flash");
+	});
+
+	test("an explicit account route preserves the default model while credentials need recovery", async () => {
+		const target = mockModels[1];
+		const store = AuthStorage.inMemory({});
+		const runtime = {
+			getModel: () => target,
+			hasConfiguredAuth: () => false,
+			getCredentialStore: () => store,
+			getAvailableSnapshot: () => [mockModels[0]],
+		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
+		const result = await findInitialModel({
+			scopedModels: [],
+			isContinuing: false,
+			defaultProvider: target.provider,
+			defaultModelId: target.id,
+			modelRuntime: runtime,
+		});
+		expect(result.model).toBe(target);
 	});
 
 	describe("persisted default model scoping", () => {

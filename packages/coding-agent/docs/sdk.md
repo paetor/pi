@@ -117,6 +117,50 @@ The CLI loads `codemode`, `tool_search`, and MCP as built-in extensions. SDK ses
 
 See the focused examples for [models](../examples/sdk/02-custom-model.ts), [tools](../examples/sdk/05-tools.ts), [extensions](../examples/sdk/06-extensions.ts), and [full control](../examples/sdk/12-full-control.ts).
 
+## Session-owned provider credentials
+
+`ModelRuntime.create({ credentials })` supplies a default native `CredentialStore`.
+A host can route one provider to a different app-owned store with
+`await modelRuntime.setCredentialStore(providerId, store)`. The extension-facing
+`ctx.modelRegistry` exposes the same method. This retains native OAuth refresh,
+subscription model filtering, and the provider's normal transport; it is not an
+API-key override and does not rewrite the default auth file.
+
+Switch only after the owning session's `waitForIdle()` boundary, not `agent_end`:
+retries, compaction, queued work, and automatic continuation may follow that event.
+Keep new prompts out of the selection transaction. An auth resolution pins its
+store from read through refresh and write, even if another selection occurs.
+A failed selection rolls back. When restoring a persisted binding, use
+`{ retainOnFailure: true }` with a fail-closed store so an unavailable account
+cannot silently fall back to default credentials. Removing a route requires an
+explicit `setCredentialStore(providerId, undefined)`.
+
+`getCredentialStore(providerId)` and `getCredentialStoreProviders()` let a host
+capture its selected stores for child construction. Each independently switchable
+session needs its own runtime. Child launchers must capture a binding before launch
+and restore it before inference; copying OAuth credentials into another refresh
+owner is not equivalent. Store routing does not alter provider definitions, load
+child extensions, or grant tools. Hosts own persistence and any non-secret,
+app-approved cross-process store descriptors. An app-owned store may implement
+`beforeLogin(providerId): void` to reject generic provider login before any prompt
+or credential mutation, for example when enrollment requires an account-specific
+command. This policy travels with the store, not a parent provider closure.
+
+For a CLI host, import `runCli` from `@earendil-works/pi-coding-agent/cli-host` and
+provide `prepareSessionCredentials` in its second argument. This trusted host
+callback receives `modelRuntime`, `sessionManager`, `sessionStartEvent`, and an
+`explicitApiKey` boolean before model resolution on every new/resumed/replaced
+session. It runs independently of extension discovery, including `--no-extensions`;
+it receives no extension API and grants no tools. No module is selected from a
+transcript. The ordinary CLI has no callback and remains unchanged.
+
+Restore routes here, not only in `session_start`: the latter runs after model and
+thinking-level selection, when absent default auth may already have caused an
+unwanted fallback. A saved/default model with an explicit store route is retained
+even when that store needs recovery. Auth resolution still fails closed through
+the routed store. SDK hosts should similarly route their runtime before calling
+`createAgentSession` or `createAgentSessionFromServices`.
+
 ## Examples
 
 | Example | Purpose |

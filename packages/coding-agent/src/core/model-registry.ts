@@ -10,6 +10,7 @@ import type {
 	ClassifierModel,
 	ClassifierResult,
 	Context,
+	CredentialStore,
 	ImageApi,
 	ImageModel,
 	ImagesContext,
@@ -50,6 +51,23 @@ export class ModelRegistry {
 
 	constructor(runtime: ModelRuntime) {
 		this.runtime = runtime;
+	}
+
+	getCredentialStoreProviders(): readonly string[] {
+		return this.runtime.getCredentialStoreProviders();
+	}
+
+	getCredentialStore(provider: string): CredentialStore | undefined {
+		return this.runtime.getCredentialStore(provider);
+	}
+
+	/** Select an app-owned provider credential store at an idle session boundary. */
+	setCredentialStore(
+		provider: string,
+		store: CredentialStore | undefined,
+		options?: AuthOperationOptions & { retainOnFailure?: boolean },
+	): Promise<void> {
+		return this.runtime.setCredentialStore(provider, store, options);
 	}
 
 	/** Reload models.json asynchronously. Await before making synchronous registry reads. */

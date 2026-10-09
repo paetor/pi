@@ -672,10 +672,14 @@ export async function findInitialModel(options: {
 		};
 	}
 
-	// 3. Try saved default from settings if auth is configured.
+	// 3. Honor an explicit credential route even when it needs recovery. Never
+	// replace that host-owned identity with an unrelated authenticated provider.
 	if (defaultProvider && defaultModelId) {
 		const found = modelRuntime.getModel(defaultProvider, defaultModelId);
-		if (found && modelRuntime.hasConfiguredAuth(found.provider)) {
+		if (
+			found &&
+			(modelRuntime.hasConfiguredAuth(found.provider) || modelRuntime.getCredentialStore(found.provider))
+		) {
 			model = found;
 			const perModel = modelThinkingLevels?.[`${defaultProvider}/${defaultModelId}`];
 			if (perModel) {
@@ -723,7 +727,7 @@ export async function restoreModelFromSession(
 	// Check if restored model exists and still has auth configured
 	const hasConfiguredAuth = restoredModel ? modelRuntime.hasConfiguredAuth(restoredModel.provider) : false;
 
-	if (restoredModel && hasConfiguredAuth) {
+	if (restoredModel && (hasConfiguredAuth || modelRuntime.getCredentialStore(restoredModel.provider))) {
 		if (shouldPrintMessages) {
 			console.log(chalk.dim(`Restored model: ${savedProvider}/${savedModelId}`));
 		}

@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import { setupCli } from "./cli/setup.ts";
-import { main } from "./main.ts";
+import { runCli } from "./cli-host.ts";
 
-setupCli();
-main(process.argv.slice(2));
+runCli(process.argv.slice(2));
