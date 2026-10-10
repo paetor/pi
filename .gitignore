@@ -45,3 +45,6 @@ plans/
 .pi/hf-sessions-backup/
 collect.sh
 packages/agent/docs/extensions/pi-server-artifact/index.md
+
+# Owned public CI diagnostics, never source or credentials.
+.fork-ci/

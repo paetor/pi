@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "kind": "pi",
+  "repository": "paetor/pi",
+  "upstream": "earendil-works/pi",
+  "upstreamVersion": "1.1.0",
+  "upstreamBase": "abe508e1b89912adde45528136c3221eb69acdd7",
+  "modelDataSource": {
+    "version": "1.1.0",
+    "sha256": "63b17b48b855e36e64c5013523acd48131ffcfa90ae48fe2f3e6fa9fe3d0da32"
+  }
+}
