@@ -568,6 +568,8 @@ async function promptForMissingSessionCwd(
 
 export interface MainOptions {
 	extensionFactories?: InlineExtension[];
+	/** Trusted host owns self-update; rejection never falls back to the upstream installer. */
+	selfUpdate?: (options: { force: boolean }) => Promise<void>;
 	/** Trusted host callback, before model resolution on every session replacement.
 	 * This is credential setup, independent of extension discovery and tool grants.
 	 */
@@ -603,7 +605,7 @@ export async function main(args: string[], options?: MainOptions) {
 	applyHttpProxySettings(bootstrapSettingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher();
 
-	if (await handlePackageCommand(args, { extensionFactories })) {
+	if (await handlePackageCommand(args, { extensionFactories, selfUpdate: options?.selfUpdate })) {
 		const exitCode = process.exitCode ?? 0;
 		if (process.platform === "win32" && exitCode === 0 && args[0] === "update") {
 			// We normally prefer process.exit(0) for package commands so bad extensions cannot keep

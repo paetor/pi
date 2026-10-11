@@ -745,6 +745,8 @@ function prepareWindowsNpmSelfUpdate(): void {
 
 export interface PackageCommandRuntimeOptions {
 	extensionFactories?: InlineExtension[];
+	/** Operator-owned installation update, never supplied by an extension or transcript. */
+	selfUpdate?: (options: { force: boolean }) => Promise<void>;
 }
 
 interface CommandSettingsResult {
@@ -1046,6 +1048,10 @@ export async function handlePackageCommand(
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
+					if (runtimeOptions.selfUpdate) {
+						await runtimeOptions.selfUpdate({ force: options.force });
+						return true;
+					}
 					const managedInstallRoot = getActiveManagedInstallRoot();
 					if (managedInstallRoot && options.force) {
 						console.error(

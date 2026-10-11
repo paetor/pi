@@ -161,6 +161,17 @@ even when that store needs recovery. Auth resolution still fails closed through
 the routed store. SDK hosts should similarly route their runtime before calling
 `createAgentSession` or `createAgentSessionFromServices`.
 
+## Host-owned CLI self-update
+
+A trusted CLI host may pass `selfUpdate({ force }): Promise<void>` to `runCli`.
+The normal command parser still handles `update`, its self aliases, `--all`,
+validation and help. Only the self-update step is delegated; ordinary extension
+and model-catalog updates remain native. A callback rejection fails the command
+without consulting the upstream release feed or falling back to a stock installer.
+This callback is not an extension hook and cannot be selected by a transcript.
+`supportsHostSelfUpdate` from `cli-host` allows fail-closed host capability checks.
+The host owns channel trust, version policy, verification, installation and rollback.
+
 ## Examples
 
 | Example | Purpose |
