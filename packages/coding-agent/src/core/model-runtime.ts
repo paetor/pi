@@ -875,8 +875,20 @@ export class ModelRuntime implements Models {
 		});
 	}
 
-	logout(providerId: string, options: AuthOperationOptions = {}): Promise<void> {
+	async logout(providerId: string, options: AuthOperationOptions = {}): Promise<void> {
 		const signal = operationSignal(options.signal);
+		signal.throwIfAborted();
+		// App-owned stores can detach a session instead of deleting shared credentials.
+		// Run outside the mutation queue: the handler may install a replacement route.
+		const store:
+			| (CredentialStore & {
+					logoutSession?: (providerId: string, options: AuthOperationOptions) => Promise<void>;
+			  })
+			| undefined = this.getCredentialStore(providerId);
+		if (store?.logoutSession) {
+			await store.logoutSession(providerId, { signal });
+			return;
+		}
 		return this.enqueueCredentialOperation(providerId, signal, async () => {
 			await this.credentials.withScope(() => this.models.logout(providerId, { signal }));
 			await this.synchronizeCredentialState(providerId, "logout", undefined, signal);

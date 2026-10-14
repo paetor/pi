@@ -176,6 +176,50 @@ test("restoring an unavailable persisted binding fails closed rather than using 
 	await expect(runtime.getAuth("openai")).rejects.toThrow("account unavailable");
 });
 
+test("session-owned logout can replace its route without deleting shared tokens or deadlocking", async () => {
+	const { runtime, registry, original } = await fixture();
+	const shared = AuthStorage.inMemory({ openai: credential("henk") });
+	const remove = vi.spyOn(shared, "delete");
+	const detached: CredentialStore = {
+		read: async () => {
+			throw new Error("session-logged-out");
+		},
+		list: async () => [],
+		modify: async () => {
+			throw new Error("session-logged-out");
+		},
+		delete: async () => {},
+	};
+	const store = Object.assign(shared, {
+		async logoutSession(_providerId: string, options: { signal?: AbortSignal }) {
+			await runtime.setCredentialStore("openai", detached, { ...options, retainOnFailure: true }).catch(() => {
+				if (runtime.getCredentialStore("openai") !== detached) throw new Error("detach-failed");
+			});
+		},
+	});
+	await registry.setCredentialStore("openai", store);
+	await runtime.logout("openai", { signal: AbortSignal.timeout(1000) });
+	await expect(runtime.getAuth("openai")).rejects.toThrow("session-logged-out");
+	expect(remove).not.toHaveBeenCalled();
+	expect(await shared.read("openai")).toMatchObject({ access: "henk" });
+	expect(await original.read("openai")).toMatchObject({ access: "original" });
+});
+
+test("failed or cancelled session logout never falls through to credential deletion", async () => {
+	const { runtime, registry } = await fixture();
+	const store = Object.assign(AuthStorage.inMemory({ openai: credential("henk") }), {
+		logoutSession: vi.fn(async () => {
+			throw new Error("session-busy");
+		}),
+	});
+	const remove = vi.spyOn(store, "delete");
+	await registry.setCredentialStore("openai", store);
+	await expect(runtime.logout("openai")).rejects.toThrow("session-busy");
+	await expect(runtime.logout("openai", { signal: AbortSignal.abort() })).rejects.toThrow();
+	expect(store.logoutSession).toHaveBeenCalledTimes(1);
+	expect(remove).not.toHaveBeenCalled();
+});
+
 test("separate runtimes remain independent and managed logout never deletes default auth", async () => {
 	const a = await fixture(),
 		b = await fixture();
