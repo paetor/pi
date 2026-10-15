@@ -496,29 +496,37 @@ describe("toBase64", () => {
 describe("createNodePhotonImages", () => {
 	it("prepares in a worker thread, leaving the event loop free", async () => {
 		const photo = noisyPng(3000, 2000);
-		const prepareOn = async (images: ImageProcessor): Promise<number> => {
-			// The longest gap between timer ticks while the image is prepared: the time the event loop was blocked.
+		const prepareOn = async (images: ImageProcessor): Promise<{ longest: number; ticks: number }> => {
+			// Measure main-thread CPU between event-loop turns, not wall time when
+			// a shared CI host deschedules us. Worker CPU must not count as blocking.
 			let longest = 0;
-			let last = performance.now();
-			const ticks = setInterval(() => {
-				const now = performance.now();
-				longest = Math.max(longest, now - last);
+			let ticks = 0;
+			let last = process.threadCpuUsage();
+			const sample = () => {
+				const now = process.threadCpuUsage();
+				longest = Math.max(longest, (now.user + now.system - last.user - last.system) / 1000);
 				last = now;
+			};
+			const timer = setInterval(() => {
+				ticks++;
+				sample();
 			}, 5);
 			try {
 				const prepared = images.prepare(photo, "image/png", DEFAULT_IMAGE_LIMITS);
 				expect(await prepared).toBeDefined();
 				// Counted until the result arrived, including the gap the last tick did not see.
-				longest = Math.max(longest, performance.now() - last);
+				sample();
 			} finally {
-				clearInterval(ticks);
+				clearInterval(timer);
 			}
-			return longest;
+			return { longest, ticks };
 		};
 		const inline = await prepareOn(await createNodePhotonImages({ worker: false }));
 		const threaded = await prepareOn(processor);
-		expect(inline).toBeGreaterThan(200);
-		expect(threaded).toBeLessThan(100);
+		expect(inline.longest).toBeGreaterThan(200);
+		expect(inline.ticks).toBe(0);
+		expect(threaded.longest).toBeLessThan(100);
+		expect(threaded.ticks).toBeGreaterThan(0);
 	}, 60_000);
 
 	it("gives the same result as the calling thread, and keeps the caller's bytes", async () => {
