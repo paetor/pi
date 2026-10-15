@@ -7,6 +7,9 @@ const durableSrcTesting = fileURLToPath(new URL("./src/testing/index.ts", import
 export default defineConfig({
 	test: {
 		environment: "node",
+		// Image-worker responsiveness measures timer gaps; parallel CPU-heavy files
+		// measure runner contention instead. Keep its latency assertions unchanged.
+		fileParallelism: false,
 		setupFiles: ["./test/setup-document-retention.ts"],
 	},
 	resolve: {
