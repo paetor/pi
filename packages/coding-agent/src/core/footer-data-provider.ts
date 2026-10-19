@@ -378,6 +378,9 @@ export class FooterDataProvider {
 				});
 			}
 		}
+		// Native events can be lost during startup or a watcher retry. Reconcile
+		// once after attachment so a cached branch cannot stay stale indefinitely.
+		this.scheduleRefresh();
 	}
 }
 

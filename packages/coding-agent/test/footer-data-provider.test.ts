@@ -249,6 +249,49 @@ describe("FooterDataProvider reftable branch detection", () => {
 		}
 	});
 
+	it("catches a branch switch before native watchers deliver their first event", async () => {
+		vi.useFakeTimers();
+		const { worktreeDir } = createReftableWorktree(tempDir);
+		const provider = new FooterDataProvider(worktreeDir);
+		try {
+			expect(provider.getGitBranch()).toBe("main");
+			const onBranchChange = vi.fn();
+			provider.onBranchChange(onBranchChange);
+			resolvedBranch = "foo";
+			// Simulate a switch in the native watcher's startup gap: no event is delivered.
+			await vi.advanceTimersByTimeAsync(501);
+			expect(provider.getGitBranch()).toBe("foo");
+			expect(onBranchChange).toHaveBeenCalledTimes(1);
+		} finally {
+			provider.dispose();
+			vi.useRealTimers();
+		}
+	});
+
+	it("catches branch switches missed while failed watchers are being reattached", async () => {
+		vi.useFakeTimers();
+		const { worktreeDir } = createReftableWorktree(tempDir);
+		const provider = new FooterDataProvider(worktreeDir);
+		try {
+			expect(provider.getGitBranch()).toBe("main");
+			const onBranchChange = vi.fn();
+			provider.onBranchChange(onBranchChange);
+			await vi.advanceTimersByTimeAsync(501);
+			expect(onBranchChange).not.toHaveBeenCalled();
+			const internals = provider as unknown as { reftableWatcher: FSWatcher | null };
+			internals.reftableWatcher?.emit("error", new Error("simulated EMFILE"));
+			expect(internals.reftableWatcher).toBeNull();
+			resolvedBranch = "foo";
+			await vi.advanceTimersByTimeAsync(5501);
+			expect(internals.reftableWatcher).not.toBeNull();
+			expect(provider.getGitBranch()).toBe("foo");
+			expect(onBranchChange).toHaveBeenCalledTimes(1);
+		} finally {
+			provider.dispose();
+			vi.useRealTimers();
+		}
+	});
+
 	it("retries git watchers 5 seconds after an async fs.watch error", async () => {
 		vi.useFakeTimers();
 		const repoDir = createPlainRepo(tempDir);

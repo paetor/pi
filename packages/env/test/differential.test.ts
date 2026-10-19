@@ -324,6 +324,7 @@ describe("RemoteExecutionEnv against NodeExecutionEnv", () => {
 				env,
 				outputWindow: undefined,
 				output: (chunk: string | Uint8Array) => output.push(String(chunk)),
+				retainedOutput: () => ({ text: output.join(""), truncated: false }),
 				diagnostic: () => {},
 				details: async () => {},
 			}) as unknown as ToolExecutionApi;
@@ -348,13 +349,22 @@ describe("RemoteExecutionEnv against NodeExecutionEnv", () => {
 			[createReadTool(), { path: "bom.txt" }],
 			[createReadTool(), { path: "bad.txt" }],
 			[createReadTool(), { path: "missing.txt" }],
-			[createBashTool(), { command: "cat text.txt; echo err >&2; exit 0" }],
+			// Cross-pipe ordering is not a process guarantee. Merge at the shell
+			// for an exact mixed-output comparison, and cover stderr on its own too.
+			[createBashTool(), { command: "{ cat text.txt; echo err >&2; } 2>&1; exit 0" }],
+			[createBashTool(), { command: "printf 'err\\n' >&2" }],
 			[createBashTool(), { command: "exit 3" }],
 			[createBashTool(), { command: "printf 'a\\nb'; ls" }],
 		];
 		for (const [tool, args] of cases) {
 			const expected = normalize(await run(local, tool, args), roots[0]);
 			const actual = normalize(await run(remote, tool, args), roots[1]);
+			if ("command" in args) {
+				const exitCode = args.command === "exit 3" ? 3 : 0;
+				// Two identical harness errors must not masquerade as tool parity.
+				expect(expected).toHaveProperty("result.structuredOutput.exitCode", exitCode);
+				expect(actual).toHaveProperty("result.structuredOutput.exitCode", exitCode);
+			}
 			expect(actual, JSON.stringify(args)).toEqual(expected);
 		}
 	}, 60_000);
