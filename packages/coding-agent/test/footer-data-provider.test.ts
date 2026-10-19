@@ -236,11 +236,12 @@ describe("FooterDataProvider reftable branch detection", () => {
 			provider.onBranchChange(onBranchChange);
 
 			writeFileSync(join(reftableDir, "tables.list"), "1\n");
-			// Real fs watcher events can arrive late under full-suite load.
-			await waitFor(() => vi.mocked(execFile).mock.calls.length === 1, 10_000);
+			// Native events may coalesce or arrive separately under full-suite load.
+			// Exact refresh counts belong to the controlled debounce tests above;
+			// this integration check observes the resulting branch and notification.
 			await waitFor(() => provider.getGitBranch() === "foo", 10_000);
 
-			expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(execFile)).toHaveBeenCalled();
 			expect(provider.getGitBranch()).toBe("foo");
 			expect(onBranchChange).toHaveBeenCalledTimes(1);
 		} finally {
