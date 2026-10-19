@@ -688,7 +688,10 @@ describe("ToolExecutionComponent parity", () => {
 				false,
 			);
 
-			const collapsed = stripAnsi(component.render(120).join("\n"));
+			// This checks compact content, not wrapping. Outside paths grow with
+			// the checkout location, so give the complete header room to render.
+			const width = Math.max(120, scenario.compact.length + 40);
+			const collapsed = stripAnsi(component.render(width).join("\n"));
 			expect(collapsed).toContain(scenario.compact);
 			expect(collapsed).not.toContain(scenario.hidden);
 			if (scenario.absent) {
@@ -696,7 +699,7 @@ describe("ToolExecutionComponent parity", () => {
 			}
 
 			component.setExpanded(true);
-			const expanded = stripAnsi(component.render(120).join("\n"));
+			const expanded = stripAnsi(component.render(width).join("\n"));
 			expect(expanded).toContain(scenario.hidden);
 		});
 	}
