@@ -26,8 +26,9 @@ describe.skipIf(process.platform === "win32")("issue #11613 bash timeout after t
 	}
 
 	it("reports the shell's exit code when background processes kept writing until the timeout", async () => {
+		// Pace output with builtins: spawning sleep for every tick can leave a gap longer than the pipe idle grace.
 		const message = await runExpectingTimeout(
-			"(while true; do echo tick; sleep 0.02; done) & sleep 0.2; echo boom >&2; exit 3",
+			"(while true; do echo tick; for ((i=0; i<2000; i++)); do :; done; done) & sleep 0.2; echo boom >&2; exit 3",
 			1,
 		);
 		expect(message).toContain("boom");
