@@ -3,10 +3,10 @@
   "kind": "pi",
   "repository": "paetor/pi",
   "upstream": "earendil-works/pi",
-  "upstreamVersion": "1.3.0",
-  "upstreamBase": "71023aec1546d6d677a65669c5665c0927ce0dd0",
+  "upstreamVersion": "1.5.2",
+  "upstreamBase": "b4afdddf44e059c67ccf5097e5317d913521b470",
   "modelDataSource": {
-    "version": "1.3.0",
-    "sha256": "7761ae59cb6d84c1e162d3d638f81816c66d3f75862e941432ea2d7a8e3bf40f"
+    "version": "1.5.2",
+    "sha256": "da14b72e5d674959b64fc541e4a9241ac9fcdfa243431479119d3edb598b2231"
   }
 }

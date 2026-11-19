@@ -5,6 +5,8 @@ import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore 
 export class RuntimeCredentials implements CredentialStore {
 	private readonly store: CredentialStore;
 	private readonly overrides = new Map<string, string>();
+	/** Modifications not yet written or failed, for example an OAuth refresh. */
+	private readonly pendingModifications = new Set<Promise<void>>();
 	private readonly stores = new Map<string, CredentialStore>();
 	private readonly scope = new AsyncLocalStorage<ReadonlyMap<string, CredentialStore>>();
 
@@ -86,7 +88,23 @@ export class RuntimeCredentials implements CredentialStore {
 		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
 		options?: AuthOperationOptions,
 	): Promise<Credential | undefined> {
-		return this.selectedStore(providerId).modify(providerId, fn, options);
+		const modification = this.selectedStore(providerId).modify(providerId, fn, options);
+		const pending = modification.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.pendingModifications.add(pending);
+		void pending.finally(() => this.pendingModifications.delete(pending));
+		return modification;
+	}
+
+	/**
+	 * Resolves when every modification started so far is written or failed. An OAuth refresh may
+	 * already have spent the single-use refresh token, so exiting before its result is written would
+	 * leave only the spent token in auth.json.
+	 */
+	async settled(): Promise<void> {
+		await Promise.all(this.pendingModifications);
 	}
 
 	async delete(providerId: string, options?: AuthOperationOptions): Promise<void> {

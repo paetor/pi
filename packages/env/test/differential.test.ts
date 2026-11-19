@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { ExecutionEnv, FileError, Result } from "@earendil-works/pi-durable/env";
@@ -324,6 +324,7 @@ describe("RemoteExecutionEnv against NodeExecutionEnv", () => {
 				env,
 				outputWindow: undefined,
 				output: (chunk: string | Uint8Array) => output.push(String(chunk)),
+				// As the Harness: the output so far (these outputs stay below the tool's limits).
 				retainedOutput: () => ({ text: output.join(""), truncated: false }),
 				diagnostic: () => {},
 				details: async () => {},
@@ -349,10 +350,11 @@ describe("RemoteExecutionEnv against NodeExecutionEnv", () => {
 			[createReadTool(), { path: "bom.txt" }],
 			[createReadTool(), { path: "bad.txt" }],
 			[createReadTool(), { path: "missing.txt" }],
-			// Cross-pipe ordering is not a process guarantee. Merge at the shell
-			// for an exact mixed-output comparison, and cover stderr on its own too.
+			// Pipe order is not guaranteed. Merge at the shell for exact mixed-output
+			// parity, and also exercise stdout and stderr separately.
 			[createBashTool(), { command: "{ cat text.txt; echo err >&2; } 2>&1; exit 0" }],
-			[createBashTool(), { command: "printf 'err\\n' >&2" }],
+			[createBashTool(), { command: "cat text.txt; exit 0" }],
+			[createBashTool(), { command: "echo err >&2; exit 0" }],
 			[createBashTool(), { command: "exit 3" }],
 			[createBashTool(), { command: "printf 'a\\nb'; ls" }],
 		];

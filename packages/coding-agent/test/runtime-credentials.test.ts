@@ -73,6 +73,81 @@ describe("RuntimeCredentials", () => {
 		expect(await credentials.read("anthropic")).toEqual({ type: "api_key", key: "runtime-key" });
 	});
 
+	// #11692: shutdown waits for an OAuth refresh in progress so the rotated token is not lost.
+	test("settled waits until pending modifications are written", async () => {
+		const storage = AuthStorage.inMemory({ anthropic: { type: "api_key", key: "old" } });
+		const credentials = new RuntimeCredentials(storage);
+		let respond!: () => void;
+		const response = new Promise<void>((resolve) => {
+			respond = resolve;
+		});
+		const modification = credentials.modify("anthropic", async () => {
+			await response;
+			return { type: "api_key", key: "rotated" };
+		});
+
+		let settled = false;
+		const settling = credentials.settled().then(() => {
+			settled = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(settled).toBe(false);
+
+		respond();
+		await settling;
+		expect(await storage.read("anthropic")).toEqual({ type: "api_key", key: "rotated" });
+		await modification;
+	});
+
+	test("settled waits for a modification in the captured account route after a switch", async () => {
+		const provider = "openai";
+		const initial = { type: "api_key", key: "old" } as const;
+		const rotated = { type: "api_key", key: "rotated" } as const;
+		const shared = AuthStorage.inMemory({ [provider]: initial });
+		const first = AuthStorage.inMemory({ [provider]: initial });
+		const second = AuthStorage.inMemory({ [provider]: initial });
+		const credentials = new RuntimeCredentials(shared);
+		credentials.setCredentialStore(provider, first);
+
+		const start = Promise.withResolvers<void>();
+		const respond = Promise.withResolvers<void>();
+		const modification = credentials.withScope(async () => {
+			await start.promise;
+			return credentials.modify(provider, async () => {
+				await respond.promise;
+				return rotated;
+			});
+		});
+		credentials.setCredentialStore(provider, second);
+		start.resolve();
+		await start.promise;
+
+		let settled = false;
+		const settling = credentials.settled().then(() => {
+			settled = true;
+		});
+		try {
+			await new Promise((resolve) => setImmediate(resolve));
+			expect(settled).toBe(false);
+		} finally {
+			respond.resolve();
+			await Promise.all([settling, modification]);
+		}
+		expect(await first.read(provider)).toEqual(rotated);
+		expect(await second.read(provider)).toEqual(initial);
+		expect(await shared.read(provider)).toEqual(initial);
+	});
+
+	test("settled resolves after a pending modification fails", async () => {
+		const credentials = new RuntimeCredentials(AuthStorage.inMemory());
+		const failed = credentials.modify("anthropic", async () => {
+			throw new Error("invalid_grant");
+		});
+
+		await credentials.settled();
+		await expect(failed).rejects.toThrow("invalid_grant");
+	});
+
 	test("delete clears both the override and persisted credential", async () => {
 		const storage = AuthStorage.inMemory({ anthropic: { type: "api_key", key: "stored-key" } });
 		const credentials = new RuntimeCredentials(storage);
